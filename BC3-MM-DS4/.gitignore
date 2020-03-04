@@ -1,0 +1,9 @@
+*.app
+*.dbg
+*.o
+*.map
+*.sym
+*.xap
+image
+depend
+.vscode
