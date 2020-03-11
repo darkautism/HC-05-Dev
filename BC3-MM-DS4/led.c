@@ -1,7 +1,9 @@
 #include <message.h>
 #include <pio.h>
 #include <stdio.h>
+
 #include "led.h"
+#include "uart.h"
 
 #define LED 	 0x08    	/* HC-05's led pin is 0x80 */
 

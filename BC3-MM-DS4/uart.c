@@ -4,11 +4,13 @@
 #include <string.h>
 #include <panic.h>
 #include <message.h>
-#include "uart.h"
-#include "cmd.h"
 #include <app/uart/uart_if.h>
 #include <string.h>
 #include <stdio.h>
+
+#include "utils.h"
+#include "uart.h"
+#include "cmd.h"
 
 typedef struct
 {
@@ -20,6 +22,7 @@ typedef struct
 static UARTStreamTask_t theUARTStreamTask;
 static uint8 uartRecvBufLen = 0;
 static uint8 uartRecvBuf[UART_RECV_BUF_SIZE];
+static uint8 _enable = 1;
 
 void UartStreamInit(void)
 {
@@ -27,7 +30,7 @@ void UartStreamInit(void)
     theUARTStreamTask.task.handler = uart_stream_handler;
     StreamConfigure(VM_STREAM_UART_CONFIG, VM_STREAM_UART_THROUGHPUT);
     /* Configure uart settings */
-    StreamUartConfigure(VM_UART_RATE_38K4, VM_UART_STOP_ONE, VM_UART_PARITY_NONE);
+    StreamUartConfigure(VM_UART_RATE_9K6, VM_UART_STOP_ONE, VM_UART_PARITY_NONE);
     /* Register uart source with task */
     MessageSinkTask(StreamSinkFromSource(StreamUartSource()), &theUARTStreamTask.task);
 }
@@ -38,6 +41,8 @@ void UartSendData(uint8 *buf, uint16 len)
     uint8 *dest;
     /*get the sink for the uart, panic if not available*/
     Sink sink = StreamUartSink();
+    if(!_enable)
+        return;
     PanicNull(sink);
     /*claim space in the sink, getting the offset to it*/
     offset = SinkClaim(sink, len);
@@ -66,7 +71,6 @@ static void uartRecvData(void)
         uartRecvBufLen += recvLen;
     }
     SourceDrop(src, recvLen);
-#if 0
 ScanCmd:
     for (tmp_u8 = 0; tmp_u8 < uartRecvBufLen; tmp_u8++)
     { /* find the new line */
@@ -83,7 +87,6 @@ ScanCmd:
             goto ScanCmd;
         }
     }
-#endif
 
     if (uartRecvBufLen >= UART_RECV_BUF_SIZE)
     { /* clean buffer */
@@ -93,6 +96,8 @@ ScanCmd:
 
 void uart_stream_handler(Task t, MessageId id, Message payload)
 {
+    if(!_enable)
+        return;
     switch (id)
     {
     case MESSAGE_MORE_DATA:
@@ -113,4 +118,8 @@ void UartPrintf(const char * format, ...) {
     vsprintf(buf, format, args);
     va_end(args);
     UartSendData((uint8 *)buf,strlen(buf));
+}
+
+void UartUserInterface(uint8 enable) {
+    _enable = enable;
 }

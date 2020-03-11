@@ -13,6 +13,8 @@ typedef enum enum_state
 #define STATUS_CL_L2CAP_CONNECT_CFM         0x02
 #define STATUS_CL_DM_WRITE_INQUIRY_MODE_CFM 0x04
 #define STATUS_CL_DM_READ_INQUIRY_TX_CFM    0x08
+#define STATUS_CL_L2CAP_REGISTER_CFM_IN     0x10
+#define STATUS_CL_L2CAP_REGISTER_CFM_OUT    0x20
 
 typedef struct
 {
@@ -20,6 +22,10 @@ typedef struct
     uint8 status;
     e_state state;
 
+    uint16 reg_in;
+    Sink sink_in;
+    uint16 reg_out;
+    Sink sink_out;
 } APP_DATA_T;
 
 extern APP_DATA_T theApp;
