@@ -1,6 +1,6 @@
 /*
-* This application demonstrates how to make a simple connection between two 
- * Bluetooth devices. It will pair the devices using the 2.1 Simple Pairing 
+* This application demonstrates how to make a simple connection between two
+ * Bluetooth devices. It will pair the devices using the 2.1 Simple Pairing
  * 'Just works' model, and send "Hello World" from Device A to Device B.
  *
  * Device A is the master, initiates the connection and sends the "Hello World"
@@ -18,11 +18,17 @@
 #include <ps.h>
 #include <panic.h>
 #include <stdio.h>
+#include <source.h>
+#include <sink.h>
 #include <pio.h>
 #include <source.h>
 #include <string.h>
 #include <stream.h>
 #include <bdaddr.h>
+#include <transform.h>
+#ifdef USB
+#include <hid.h>
+#endif
 
 #include "led.h"
 #include "uart.h"
@@ -31,9 +37,19 @@
 #include "log.h"
 #include "utils.h"
 
+#ifdef USB
+#include "DS4Usb.h"
+#endif
+
 #define loopConnect 4000
 
-APP_DATA_T theApp;
+APP_DATA_T app;
+
+const hid_connection_config hid_conn_cfg =
+    {
+        11250, /* Latency (11.25ms) */
+        TRUE,
+};
 
 static void app_handler(Task task, MessageId id, Message message)
 {
@@ -42,24 +58,24 @@ static void app_handler(Task task, MessageId id, Message message)
     case CL_INIT_CFM:
     {
         CL_INIT_CFM_T *cic = (CL_INIT_CFM_T *)message;
-        theApp.state |= STATUS_CL_INIT_CFM;
+        HidInit(task, 0);
         if (success == cic->status)
         {
-            LOG_DEBUG(("Bluetooth version: "  ));
-            switch(cic->version) {
-                case bluetooth2_0:
-                    LOG_DEBUG(("v2.0\n"));
-                    ConnectionWriteInquiryMode(&theApp.task, inquiry_mode_rssi);
-                    break;
-                case bluetooth2_1:
-                    LOG_DEBUG(("v2.1\n"));
-                    ConnectionWriteInquiryMode(&theApp.task, inquiry_mode_eir);
-                    break;
-                default:
-                    LOG_DEBUG(("unknow\n"));
-                    ConnectionWriteInquiryMode(&theApp.task, inquiry_mode_eir);
+            LOG_DEBUG(("Bluetooth version: "));
+            switch (cic->version)
+            {
+            case bluetooth2_0:
+                LOG_DEBUG(("v2.0\n"));
+                ConnectionWriteInquiryMode(task, inquiry_mode_rssi);
+                break;
+            case bluetooth2_1:
+                LOG_DEBUG(("v2.1\n"));
+                ConnectionWriteInquiryMode(task, inquiry_mode_eir);
+                break;
+            default:
+                LOG_DEBUG(("unknow\n"));
+                ConnectionWriteInquiryMode(task, inquiry_mode_eir);
             }
-            
 
             /* Page scan for 100 slots out of every 150 */
             ConnectionWritePagescanActivity(150, 100);
@@ -67,29 +83,11 @@ static void app_handler(Task task, MessageId id, Message message)
             ConnectionWriteScanEnable(hci_scan_enable_inq_and_page);
 
             /* enable pin pair */
-            ConnectionSmSetSecurityMode(&theApp.task, sec_mode0_off, hci_enc_mode_off);
+            ConnectionSmSetSecurityMode(task, sec_mode0_off, hci_enc_mode_off);
             ConnectionSmSetSecurityLevel(protocol_l2cap, 0x0001, ssp_secl4_l0, TRUE, FALSE, FALSE);
             ConnectionSmSetSecurityLevel(protocol_rfcomm, 0x0001, ssp_secl4_l0, TRUE, FALSE, FALSE);
-            
-#ifdef BLUESTACK_VERSION_MAJOR
-            ConnectionSmRegisterIncomingService(protocol_l2cap, 0x0001, sec_in_none);
-            ConnectionSmRegisterIncomingService(protocol_rfcomm, 0x0001, sec_in_none);
-            
-            /* register psm for ds4 connection */
-            ConnectionL2capRegisterRequest(&theApp.task, 0x11, 0);
-            ConnectionL2capRegisterRequest(&theApp.task, 0x13, 0);
-#else
-            ConnectionSmRegisterIncomingService(protocol_l2cap, 0x0001, secl_none);
-            ConnectionSmRegisterIncomingService(protocol_rfcomm, 0x0001, secl_none);
-            
-            /* register psm for ds4 connection */
-            ConnectionL2capRegisterRequest(&theApp.task, 0x11);
-            ConnectionL2capRegisterRequest(&theApp.task, 0x13);
-#endif
-
-
             /* start scan */
-            ConnectionInquire(&theApp.task, 0x9E8B33, 0, 8, 0 /*listen all type*/);
+            ConnectionInquire(task, 0x9E8B33, 0, 8, 0 /*listen all type*/);
         }
         else
         {
@@ -99,114 +97,32 @@ static void app_handler(Task task, MessageId id, Message message)
     break;
 
     case CL_DM_WRITE_INQUIRY_MODE_CFM:
-        theApp.state |= STATUS_CL_DM_WRITE_INQUIRY_MODE_CFM;
-        break;
-
     case CL_DM_READ_INQUIRY_TX_CFM:
-        theApp.state |= STATUS_CL_DM_READ_INQUIRY_TX_CFM;
-        break;
-
     case CL_DM_LOCAL_NAME_COMPLETE:
-    /*
-        UartPrintf("%.*s\n", ((CL_DM_LOCAL_NAME_COMPLETE_T*)message)->size_local_name, ((CL_DM_LOCAL_NAME_COMPLETE_T*)message)->local_name);
-        */
-        break;    
-
     case CL_SM_SECURITY_LEVEL_CFM:
-        LOG_DEBUG(("CL_SM_SECURITY_LEVEL_CFM\n" ));
-        break;
-
     case CL_SDP_SERVICE_SEARCH_ATTRIBUTE_CFM:
-        LOG_DEBUG(("CL_SDP_SERVICE_SEARCH_ATTRIBUTE_CFM\n" ));
-        break;
-        
     case CL_DM_ACL_OPENED_IND:
-        LOG_DEBUG(("CL_DM_ACL_OPENED_IND\n" ));
-        break;
-
     case CL_DM_ACL_CLOSED_IND:
-        LOG_DEBUG(("CL_DM_ACL_CLOSED_IND\n" ));
-        break;
-    case CL_L2CAP_CONNECT_IND:
-        LOG_DEBUG(("CL_L2CAP_CONNECT_IND\n" ));
+    case CL_SM_AUTHENTICATE_CFM:
         break;
 
-        
+    case CL_L2CAP_CONNECT_IND:
+        printf("CL_L2CAP_CONNECT_IND\n");
+        break;
 
     case CL_SM_PIN_CODE_IND:
-        ConnectionSmPinCodeResponse(&((CL_SM_PIN_CODE_IND_T*)message)->bd_addr, 4, (uint8 *)"0000");
-        LOG_DEBUG(("CL_SM_PIN_CODE_IND\n" ));
-        break;
-
-    case CL_L2CAP_UNREGISTER_CFM:
-        LOG_DEBUG(("CL_L2CAP_UNREGISTER_CFM\n" ));
-        break;
-        
-    case CL_L2CAP_REGISTER_CFM:
-        LOG_DEBUG(("CL_L2CAP_REGISTER_CFM\n" ));
-        break;
-
-    case CL_SM_AUTHENTICATE_CFM:
-        LOG_DEBUG(("CL_SM_AUTHENTICATE_CFM %d,%d\n", ((CL_SM_AUTHENTICATE_CFM_T*)message)->status, ((CL_SM_AUTHENTICATE_CFM_T*)message)->key_type ));
-        break;
-
-    case CL_L2CAP_DISCONNECT_IND:
-        LedSpeed(1000,100);
-        theApp.state &= ~STATUS_CL_L2CAP_CONNECT_CFM;
-        /* start scan */
-        ConnectionInquire(&theApp.task, 0x9E8B33, 0, 8, 0 /*listen all type*/);
-        /*
-        UartPrintf("Disconnect %d\n", ((CL_L2CAP_DISCONNECT_IND_T*)message)->status);
-        */
-        break;        
-
-    case CL_L2CAP_CONNECT_CFM:
-        LOG_DEBUG(("CL_L2CAP_CONNECT_CFM\n" ));  
-        #define _L2CAP_C ((CL_L2CAP_CONNECT_CFM_T*)message)
-        switch (_L2CAP_C->status) {    
-            case l2cap_connect_success:
-                LedSpeed(100,100);
-                theApp.state |= STATUS_CL_L2CAP_CONNECT_CFM;
-                if (_L2CAP_C->psm_local == 0x13)
-                    PanicZero( StreamConnect( StreamSourceFromSink(_L2CAP_C->sink) , StreamUartSink() ));
-                else if (_L2CAP_C->psm_local == 0x11)
-                    PanicZero( StreamConnect( StreamUartSource(), _L2CAP_C->sink ));
-                break;
-            case l2cap_connect_failed:
-                LOG_DEBUG(("l2cap_connect_failed\n" ));
-                break;
-            case l2cap_connect_failed_internal_error:
-                LOG_DEBUG(("l2cap_connect_failed_internal_error\n" ));
-                break;
-            case l2cap_connect_failed_remote_reject:
-                LOG_DEBUG(("Remote reject conn\n" ));
-                break;
-            default:
-                LOG_DEBUG(("l2cap unknow status %d\n", _L2CAP_C->status ));
-        }
+        ConnectionSmPinCodeResponse(&((CL_SM_PIN_CODE_IND_T *)message)->bd_addr, 4, (uint8 *)"0000");
         break;
 
     case CL_DM_REMOTE_NAME_COMPLETE:
-        #define _RNAME ((CL_DM_REMOTE_NAME_COMPLETE_T*)message)
-        if (_RNAME->status == hci_success) {
-            /* 
-            UartPrintf("%X:%X:%lX %.*s\n",
-               _RNAME->bd_addr.nap,
-               _RNAME->bd_addr.uap,
-               _RNAME->bd_addr.lap,
-               _RNAME->size_remote_name, _RNAME->remote_name);
-               tmp_ucp = ((unsigned char *)&_RNAME->bd_addr);
-            */
-            if(strstr((char *)_RNAME->remote_name, "Wireless Controller")) {
-#ifdef BLUESTACK_VERSION_MAJOR
-                ConnectionL2capConnectRequest(&theApp.task, &_RNAME->bd_addr, 0x11, 0x11, 0, 0);
-                ConnectionL2capConnectRequest(&theApp.task, &_RNAME->bd_addr, 0x13, 0x13, 0, 0);
-#else /*Old version SDK*/
-                ConnectionL2capConnectRequest(&theApp.task, &_RNAME->bd_addr, 0x11, 0x11, 0);
-                ConnectionL2capConnectRequest(&theApp.task, &_RNAME->bd_addr, 0x13, 0x13, 0);
-#endif
+#define _RNAME ((CL_DM_REMOTE_NAME_COMPLETE_T *)message)
+        if (_RNAME->status == hci_success)
+        {
+            if (strstr((char *)_RNAME->remote_name, "Wireless Controller"))
+            {
+                HidConnect(app.hid_lib, task, &_RNAME->bd_addr, &hid_conn_cfg);
             }
-        }        
+        }
         break;
 
     case CL_DM_INQUIRE_RESULT:
@@ -214,34 +130,121 @@ static void app_handler(Task task, MessageId id, Message message)
         switch (((CL_DM_INQUIRE_RESULT_T *)message)->status)
         {
         case inquiry_status_ready:
-            inquiry_complete(&theApp.task, (CL_DM_INQUIRE_RESULT_T *)message);
-            /* UartPrintf("Scan complete\n");*/
-            MessageSendLater( &theApp.task, loopConnect, 0, 10000 );
+            LedSpeed(1000, 100);
+            inquiry_complete(task, (CL_DM_INQUIRE_RESULT_T *)message);
+            MessageSendLater(task, loopConnect, 0, 10000);
         case inquiry_status_result:
-            inquiry_result(&theApp.task, (CL_DM_INQUIRE_RESULT_T *)message);
+            inquiry_result(task, (CL_DM_INQUIRE_RESULT_T *)message);
         }
         break;
     }
 
+    case HID_INIT_CFM:
+        app.hid_lib = ((HID_INIT_CFM_T *)message)->hid_lib;
+        break;
+
+    case HID_CONNECT_CFM:
+        LedSpeed(100, 100);
+        app.status |= STATUS_HID_CONNECTED;
+        app.hid = ((HID_CONNECT_CFM_T *)message)->hid;
+        app.hid_sink = ((HID_CONNECT_CFM_T *)message)->interrupt_sink;
+        app.hid_source = StreamSourceFromSink(app.hid_sink);
+        app.hid_inturrupt_sink = ((Sink)((uint8*)app.hid + 32)); /* Just force use offset to set struct*/
+#ifdef UART
+        PanicZero(StreamConnect(StreamSourceFromSink(app.hid_sink), StreamUartSink()));
+        PanicZero(StreamConnect(StreamUartSource(), app.hid_inturrupt_sink));
+#endif
+#ifdef USB
+        MessageSinkTask(app.hid_sink, task);
+        /* TODO Set Report */
+#endif
+        break;
+
+    case HID_DISCONNECT_IND:
+        LedSpeed(1000, 100);
+        app.status &= ~STATUS_HID_CONNECTED;
+        MessageSendLater(task, loopConnect, 0, 10000);
+#ifdef UART
+        StreamDisconnect(0, StreamUartSink());
+        StreamDisconnect(StreamUartSource(), 0);
+#endif
+        break;
+
+    case HID_SET_REPORT_CFM:
+        printf("HID_SET_REPORT_CFM %d\n", ((HID_SET_REPORT_CFM_T *)message)->status);
+        break;
+
+#ifdef USB
+    case MESSAGE_MORE_DATA: {        
+        uint8 i = 0;
+        uint8 *dest;
+        Sink sink;
+        tmp_u8 = SourceSize(app.hid_source);
+        tmp_ucp = (uint8 *)SourceMap(app.hid_source);
+        printf("s %d\n", tmp_u8);
+        for (i = 0; i + 10 < tmp_u8; i++)
+        {
+            if (tmp_ucp[i] != 0xa1)
+                continue; /* drop this */
+            sink = StreamUsbEndPointSink(DS4ENDPOINT);
+            if (SinkClaim(sink, 64) != 0)
+                break; /* claim fail so skip this round */
+            dest = SinkMap(sink);
+            if (tmp_ucp[++i] == 0x01)
+            { /* report 0x01 */
+                memcpy(dest, &tmp_ucp[i], 10);
+                memset(dest + 10, 0, 54);
+            }
+            else if (tmp_ucp[i] == 0x11 || tmp_ucp[i] == 0x05)
+            { /* report 0x11 */
+                memcpy(dest, &tmp_ucp[i + 2] /*Skip first and second bytes*/, 64);
+            }
+            else
+            {
+                continue; /* drop this */
+            }
+            SinkFlush(sink, 64);
+            break; /* Because BC3 chip is too slow so we can not handle all of DS4 packet, just skip other packet */
+        }
+        /* drop all because this chip cannot handle more data */
+        SourceDrop(app.hid_source, tmp_u8);
+        break;
+    }
+#endif
+
     case loopConnect:
-        LOG_DEBUG(("LOOPCONNECT\n"));        
-        if ((theApp.state & STATUS_CL_L2CAP_CONNECT_CFM) == 0)
-            ConnectionInquire(&theApp.task, 0x9E8B33, 0, 8, 0 /*listen all type*/);
+        LOG_DEBUG(("LOOPCONNECT\n"));
+        if ((app.status & STATUS_HID_CONNECTED) == 0)
+        {
+            LedSpeed(500, 100);
+            ConnectionInquire(task, 0x9E8B33, 0, 8, 0 /*listen all type*/);
+        }
         break;
 
     default:
         LOG_DEBUG(("UMsg: 0x%0X\n", id));
+        printf("UMsg: 0x%0X\n", id);
         break;
     }
 }
 
+#ifdef USB
+extern void _init(void);
+void _init(void)
+{
+    UsbInit();
+}
+#endif
+
 int main(void)
 {
-    theApp.task.handler = app_handler;
-    theApp.state = state_initialised;
+    app.task.handler = app_handler;
     /*UartStreamInit();*/
     LedInit();
-    ConnectionInit(&theApp.task);
+#ifdef USB
+    UsbMagInit();
+#endif
+    ConnectionInit(&app.task);
     MessageLoop();
     return 0;
 }

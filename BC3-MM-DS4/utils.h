@@ -3,6 +3,7 @@
 
 #include <app/bluestack/types.h>
 #include <app/bluestack/bluetooth.h>
+#include <app/bluestack/bluetooth.h>
 
 extern uint32 hexadecimalToDecimal(char hexVal[]);
 #ifndef BLUESTACK_VERSION_MAJOR

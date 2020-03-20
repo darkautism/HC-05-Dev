@@ -1,27 +1,22 @@
 #ifndef __MAIN_H
 #define __MAIN_H
 #include <connection.h>
+#include <hid.h>
+#include <sink.h>
 
-typedef enum enum_state
-{
-    state_initialised,
-    state_connecting,
-    state_connected
-} e_state;
-
-#define STATUS_CL_INIT_CFM                  0x01
-#define STATUS_CL_L2CAP_CONNECT_CFM         0x02
-#define STATUS_CL_DM_WRITE_INQUIRY_MODE_CFM 0x04
-#define STATUS_CL_DM_READ_INQUIRY_TX_CFM    0x08
+#define STATUS_HID_CONNECTED 0x01
 
 typedef struct
 {
     TaskData task;
     uint8 status;
-    e_state state;
-
+    HID_LIB *hid_lib;
+    Sink hid_sink;
+    Source hid_source;
+    Sink hid_inturrupt_sink;
+    HID *hid;
 } APP_DATA_T;
 
-extern APP_DATA_T theApp;
-
+extern APP_DATA_T app;
+extern const hid_connection_config hid_conn_cfg;
 #endif

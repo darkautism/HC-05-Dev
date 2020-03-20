@@ -4,11 +4,16 @@
 #include <string.h>
 #include <panic.h>
 #include <message.h>
-#include "uart.h"
-#include "cmd.h"
 #include <app/uart/uart_if.h>
+#include <connection.h>
 #include <string.h>
 #include <stdio.h>
+
+#include "main.h"
+#include "uart.h"
+#include "utils.h"
+
+#ifdef UART
 
 typedef struct
 {
@@ -20,6 +25,37 @@ typedef struct
 static UARTStreamTask_t theUARTStreamTask;
 static uint8 uartRecvBufLen = 0;
 static uint8 uartRecvBuf[UART_RECV_BUF_SIZE];
+
+#ifdef ENABLE_UART_CMD
+static void cmd_parser(uint8 *buf)
+{
+    if (strstr((char *)buf, (char *)"scan"))
+    {
+        UartPrintf("Scan start...\n");
+        ConnectionInquire(&app.task, 0x9E8B33, 0, 8, 0 /*listen all type*/);
+    }
+    else if (strstr((char *)buf, (char *)"name"))
+    {
+        ConnectionReadLocalName(&app.task);
+    }
+    else if (strstr((char *)buf, (char *)"conn"))
+    {
+        bdaddr *addr = PanicUnlessMalloc(sizeof(bdaddr));
+        buf[9]=0;
+        buf[12]=0;
+        buf[19]=0;
+        addr->nap=hexadecimalToDecimal((char *)buf+5);
+        addr->uap=hexadecimalToDecimal((char *)buf+10);
+        addr->lap=hexadecimalToDecimal((char *)buf+13);
+        UartPrintf("%X:%X:%lX\n",
+            addr->nap,
+            addr->uap,
+            addr->lap);
+        HidConnect(app.hid_lib, &app.task, addr, &hid_conn_cfg);
+        free(addr);
+    }
+}
+#endif
 
 void UartStreamInit(void)
 {
@@ -66,7 +102,7 @@ static void uartRecvData(void)
         uartRecvBufLen += recvLen;
     }
     SourceDrop(src, recvLen);
-#if 0
+#ifdef ENABLE_UART_CMD
 ScanCmd:
     for (tmp_u8 = 0; tmp_u8 < uartRecvBufLen; tmp_u8++)
     { /* find the new line */
@@ -114,3 +150,4 @@ void UartPrintf(const char * format, ...) {
     va_end(args);
     UartSendData((uint8 *)buf,strlen(buf));
 }
+#endif

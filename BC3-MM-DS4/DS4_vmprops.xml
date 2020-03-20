@@ -1,0 +1,13 @@
+<custom>
+   <property type="list" key="interface" format="define" name="Interface" defaultvalue="0">
+       <option internalval="UART">UART</option>
+       <option internalval="USB">USB</option>
+       <description>
+           <![CDATA[
+           This option selects which interface you will be working with.
+           <p>
+           If you'd like to work with arduino, UART is good option, else if you want to work with windows, USB option is easy to setup.
+           ]]>
+       </description>
+   </property>
+</custom>

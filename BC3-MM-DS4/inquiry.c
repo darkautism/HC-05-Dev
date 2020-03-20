@@ -8,7 +8,7 @@
 #include "log.h"
 #include "main.h"
 #include "uart.h"
-#include "cmd.h"
+#include "utils.h"
 
 
 #define EIR_UUID16_PART         0x02    /* More 16-bit UUIDs available */
@@ -33,16 +33,15 @@ static bdaddr* dev=0;
 
 void inquiry_result(TaskData *task ,CL_DM_INQUIRE_RESULT_T *ir)
 {
-    uint8 i;
     if (BdaddrIsZero(&ir->bd_addr))
         return;
 
     if (!dev)
         dev=PanicUnlessMalloc(MAX_DEVICE * sizeof(bdaddr));
 
-    for (i = 0; i < sz_dev; i++)
+    for (tmp_u8 = 0; tmp_u8 < sz_dev; tmp_u8++)
     {
-        if (BdaddrIsSame(&dev[i], &ir->bd_addr))
+        if (BdaddrIsSame(&dev[tmp_u8], &ir->bd_addr))
             return;
     }
     if (sz_dev < MAX_DEVICE)

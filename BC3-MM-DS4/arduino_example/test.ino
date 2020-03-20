@@ -108,7 +108,7 @@ void DS4Task( SoftwareSerial dongle ) {
                     Serial.printf("BUG 0x01 %d!\n", bytes);
                     return;
                 }
-                r01 = (report0x01*)buf;                
+                r01 = (report0x01*)buf;
                 Serial.printf("DS4 says: L(%d,%d) R(%d,%d)\n", r01->L_X, r01->L_Y, r01->R_X, r01->R_Y);
                 break;
             case 0x11:
@@ -123,7 +123,7 @@ void DS4Task( SoftwareSerial dongle ) {
             default:
             Serial.printf("Unknow report type! %d\n", buf[1]);
         }
-    }  
+    }
 }
 
 void loop()
@@ -141,7 +141,7 @@ void loop()
                     Serial.printf("BUG 0x01 %d!\n", bytes);
                     return;
                 }
-                r01 = (report0x01*)buf;                
+                r01 = (report0x01*)buf;
                 Serial.printf("DS4 says: L(%d,%d) R(%d,%d)", r01->L_X, r01->L_Y, r01->R_X, r01->R_Y);
                 if (r01->PAD&0b10000   )
                     Serial.printf("□ ");
@@ -152,7 +152,7 @@ void loop()
                 if (r01->PAD&0b10000000)
                     Serial.printf("△ ");
 
-                // Other DS4 code define please visit https://github.com/darkautism/gds4/blob/master/DS4.go           
+                // Other DS4 code define please visit https://github.com/darkautism/gds4/blob/master/DS4.go
                 Serial.printf("\n");
                 break;
             case 0x11:
@@ -172,7 +172,7 @@ void loop()
                 if (r11->PAD&0b10000000)
                     Serial.printf("△ ");
 
-                // Other DS4 code define please visit https://github.com/darkautism/gds4/blob/master/DS4.go                
+                // Other DS4 code define please visit https://github.com/darkautism/gds4/blob/master/DS4.go
                 Serial.printf("\n");
                 break;
             default:
