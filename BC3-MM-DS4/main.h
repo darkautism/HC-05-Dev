@@ -15,6 +15,8 @@ typedef struct
     Source hid_source;
     Sink hid_inturrupt_sink;
     HID *hid;
+    uint8 idle;
+    uint8 protocol;
 } APP_DATA_T;
 
 extern APP_DATA_T app;

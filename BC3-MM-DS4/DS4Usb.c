@@ -12,6 +12,8 @@
 */
 
 #include "main.h"
+#include "utils.h"
+#include "log.h"
 #include "DS4Usb.h"
 
 #ifdef USB
@@ -372,43 +374,65 @@ static void UsbHandleClassRequest(void) {
 		usb_response.success = TRUE;
 		usb_response.data_length = 0;
 		/* Process the request */
-
-        printf("%d\n", usb_response.original_request.bRequest);
 		switch (usb_response.original_request.bRequest)
 		{
 			/* GET_REPORT */
         	case 0x01:
+                usb_response.success = FALSE;
 				break;
 
 			/* GET_IDLE */
-            case 0x02:
+            case 0x02: {
+                tmp_ucp = SinkMap(usb.usb_sink) + SinkClaim(usb.usb_sink, 1);
+                tmp_ucp[0] = app.idle;
+                usb_response.data_length = 1;
 				break;
+            }
 
 			/* GET_PROTOCOL */
             case 0x03:
+                tmp_ucp = SinkMap(usb.usb_sink) + SinkClaim(usb.usb_sink, 1);
+                tmp_ucp[0] = app.protocol;
+                usb_response.data_length = 1;
 				break;
 
 			/* SET_REPORT */
             case 0x09: 
-                if (app.status & STATUS_HID_CONNECTED) {
-                    HidSetReport(app.hid,  hid_report_output, SourceSize(usb.usb_source), SourceMap(usb.usb_source));
-                } else {
-                    usb_response.success = FALSE;
+                usb_response.success = TRUE;
+                {
+                    uint8 i;
+                    uint8 size = SourceSize(usb.usb_source);
+                    if ((i = SinkClaim(app.hid_inturrupt_sink, 79)) != 0xFFFF) {
+                        tmp_ucp = SinkMap(app.hid_inturrupt_sink)+i;
+                        tmp_ucp[0] = 0x52;
+                        tmp_ucp[1] = 0x11;
+                        tmp_ucp[2] = 0x3E|0x80;
+                        tmp_ucp[4] = 0x01|0x02|0x04;
+                        memcpy(tmp_ucp+3+2, (uint8 *)SourceMap(usb.usb_source)+2, size-2); /* Skip 2 byte we dont know */
+                        memset(tmp_ucp+3+size,0, 76-size);
+                        SinkFlush(app.hid_inturrupt_sink, 79);
+                    }
                 }
 				break;
 
 			/* SET IDLE */
             case 0x0a:
-                /* skip this event, i have no idea how to resolve it */
+                if (app.status & STATUS_HID_CONNECTED) {
+                    app.idle = usb_response.original_request.wValue >> 8;
+                    HidSetIdle(app.hid, app.idle);
+                } else {
+                    usb_response.success = FALSE;
+                }
 				break;
 
 			/* SET_PROTOCOL */
             case 0x0b:
+                app.protocol = usb_response.original_request.wValue & 1;
 				break;
 
 			/* Unknown command, report failure */
             default:
-                printf("WTF?\n");
+                LOG_DEBUG(("WTF?\n"));
 				break;
 		}
 
@@ -437,7 +461,7 @@ static void devHandler(Task task, MessageId id, Message message)
             UsbHandleClassRequest();
             break;
     default:
-        printf("UMsg: 0x%0X\n", id);
+        LOG_DEBUG(("UMsg: 0x%0X\n", id));
         break;
     }
 }

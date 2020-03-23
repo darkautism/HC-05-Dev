@@ -47,7 +47,7 @@ APP_DATA_T app;
 
 const hid_connection_config hid_conn_cfg =
     {
-        11250, /* Latency (11.25ms) */
+        62000,
         TRUE,
 };
 
@@ -65,15 +65,12 @@ static void app_handler(Task task, MessageId id, Message message)
             switch (cic->version)
             {
             case bluetooth2_0:
-                LOG_DEBUG(("v2.0\n"));
                 ConnectionWriteInquiryMode(task, inquiry_mode_rssi);
                 break;
             case bluetooth2_1:
-                LOG_DEBUG(("v2.1\n"));
                 ConnectionWriteInquiryMode(task, inquiry_mode_eir);
                 break;
             default:
-                LOG_DEBUG(("unknow\n"));
                 ConnectionWriteInquiryMode(task, inquiry_mode_eir);
             }
 
@@ -104,10 +101,7 @@ static void app_handler(Task task, MessageId id, Message message)
     case CL_DM_ACL_OPENED_IND:
     case CL_DM_ACL_CLOSED_IND:
     case CL_SM_AUTHENTICATE_CFM:
-        break;
-
-    case CL_L2CAP_CONNECT_IND:
-        printf("CL_L2CAP_CONNECT_IND\n");
+    case CL_L2CAP_DISCONNECT_IND:
         break;
 
     case CL_SM_PIN_CODE_IND:
@@ -149,14 +143,25 @@ static void app_handler(Task task, MessageId id, Message message)
         app.hid = ((HID_CONNECT_CFM_T *)message)->hid;
         app.hid_sink = ((HID_CONNECT_CFM_T *)message)->interrupt_sink;
         app.hid_source = StreamSourceFromSink(app.hid_sink);
-        app.hid_inturrupt_sink = ((Sink)((uint8*)app.hid + 32)); /* Just force use offset to set struct*/
+        app.hid_inturrupt_sink = ((Sink)*((uint8 *)app.hid + 4)); /* Just force use offset to set struct*/
 #ifdef UART
         PanicZero(StreamConnect(StreamSourceFromSink(app.hid_sink), StreamUartSink()));
         PanicZero(StreamConnect(StreamUartSource(), app.hid_inturrupt_sink));
 #endif
 #ifdef USB
+        usb.ep_sink = StreamUsbEndPointSink(DS4ENDPOINT);
         MessageSinkTask(app.hid_sink, task);
-        /* TODO Set Report */
+        {
+            uint8 i;
+            if ((i = SinkClaim(app.hid_inturrupt_sink, 79)) != 0xFFFF) {
+                tmp_ucp = SinkMap(app.hid_inturrupt_sink)+i;
+                tmp_ucp[0] = 0x52;
+                tmp_ucp[1] = 0x11;
+                tmp_ucp[2] = 0x3E|0x80;
+                memset(tmp_ucp+3,0, 76);
+                SinkFlush(app.hid_inturrupt_sink, 79);
+            }
+        }
 #endif
         break;
 
@@ -173,37 +178,34 @@ static void app_handler(Task task, MessageId id, Message message)
     case HID_SET_REPORT_CFM:
         printf("HID_SET_REPORT_CFM %d\n", ((HID_SET_REPORT_CFM_T *)message)->status);
         break;
-
+    
 #ifdef USB
-    case MESSAGE_MORE_DATA: {        
+    case MESSAGE_MORE_DATA:
+    {
         uint8 i = 0;
         uint8 *dest;
-        Sink sink;
+        uint8 offset;
         tmp_u8 = SourceSize(app.hid_source);
         tmp_ucp = (uint8 *)SourceMap(app.hid_source);
-        printf("s %d\n", tmp_u8);
-        for (i = 0; i + 10 < tmp_u8; i++)
+        for (i = 0; i + 78 < tmp_u8 ; i++)
         {
-            if (tmp_ucp[i] != 0xa1)
-                continue; /* drop this */
-            sink = StreamUsbEndPointSink(DS4ENDPOINT);
-            if (SinkClaim(sink, 64) != 0)
+            if (tmp_ucp[i] != 0xa1 || (tmp_ucp[i+1] != 0x01 && tmp_ucp[i+1] != 0x11) ) {
+                printf("??\n");
+                break; /* drop this */
+            }
+            if ((offset = SinkClaim(usb.ep_sink, 64)) == 0xFFFF)
                 break; /* claim fail so skip this round */
-            dest = SinkMap(sink);
-            if (tmp_ucp[++i] == 0x01)
-            { /* report 0x01 */
+            
+            dest = SinkMap(usb.ep_sink) + offset;
+            if (tmp_ucp[++i] == 0x01) {
                 memcpy(dest, &tmp_ucp[i], 10);
                 memset(dest + 10, 0, 54);
+                /*SinkFlushHeader(Sink sink, uint16 amount, const uint16 *header, uint16 length);*/
+            } else if (tmp_ucp[i] == 0x11) {
+                dest[0] = 0x01;
+                memcpy(dest+1, &tmp_ucp[i + 3] /*Skip first and second bytes*/, 63);
             }
-            else if (tmp_ucp[i] == 0x11 || tmp_ucp[i] == 0x05)
-            { /* report 0x11 */
-                memcpy(dest, &tmp_ucp[i + 2] /*Skip first and second bytes*/, 64);
-            }
-            else
-            {
-                continue; /* drop this */
-            }
-            SinkFlush(sink, 64);
+            SinkFlush(usb.ep_sink, 64);
             break; /* Because BC3 chip is too slow so we can not handle all of DS4 packet, just skip other packet */
         }
         /* drop all because this chip cannot handle more data */
