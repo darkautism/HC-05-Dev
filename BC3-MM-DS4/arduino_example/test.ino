@@ -1,19 +1,4 @@
 #include <SoftwareSerial.h>
-
-/*
-  String indexOf() and lastIndexOf() functions
-
-  Examples of how to evaluate, look for, and replace characters in a String
-
-  created 27 Jul 2010
-  modified 2 Apr 2012
-  by Tom Igoe
-
-  This example code is in the public domain.
-
-  http://www.arduino.cc/en/Tutorial/StringIndexOf
-*/
-#include <SoftwareSerial.h>
 #include <Arduino.h>
 
 SoftwareSerial dongle(D5, D4); // RX, TX
